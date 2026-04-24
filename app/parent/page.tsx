@@ -28,12 +28,12 @@ export default function ParentDashboard() {
   };
 
   // 3. LOGGING LOGIC (Triggers Camera)
-  const startLogging = (meal) => {
+  const startLogging = (meal: any) => {
     setCurrentMeal(meal);
     fileInputRef.current.click(); 
   };
 
-  const handleFileChange = async (event) => {
+ const handleFileChange = async (event: any) => {
     const file = event.target.files[0];
     if (!file) return;
 
@@ -64,7 +64,7 @@ export default function ParentDashboard() {
 
   // 4. SOS EMERGENCY LOGIC
   const triggerSOS = async () => {
-    navigator.geolocation.getCurrentPosition(async (pos) => {
+  navigator.geolocation.getCurrentPosition(async (pos: any) => {
       const { error } = await supabase.from('emergency_alerts').insert([
         { location_lat: pos.coords.latitude, location_long: pos.coords.longitude }
       ]);
