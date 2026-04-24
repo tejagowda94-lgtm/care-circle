@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 
 export default function ChildDashboard() {
-  const [logs, setLogs] = useState([]);
+const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   // 1. AUTH CHECK: Ensure user is logged in
