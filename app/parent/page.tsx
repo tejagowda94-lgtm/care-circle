@@ -5,113 +5,64 @@ import { supabase } from '@/lib/supabase';
 
 export default function ParentDashboard() {
   const [loading, setLoading] = useState(false);
-  const [lang, setLang] = useState('en');
+  const [waterCount, setWaterCount] = useState(0);
+  const [steps, setSteps] = useState(1250); // Simulation
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [currentMeal, setCurrentMeal] = useState<any>(null);
 
+  // Load daily stats
   useEffect(() => {
-    const checkUser = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) { window.location.href = '/login'; }
+    const fetchStats = async () => {
+      const { data } = await supabase.from('water_logs').select('glasses').eq('created_at', new Date().toISOString().split('T')[0]);
+      if (data) setWaterCount(data.length);
     };
-    checkUser();
+    fetchStats();
   }, []);
 
-  const content: any = {
-    en: { welcome: "Hello, Dad!", meal: "I Ate My Meal", med: "Take Medicine", water: "Drink Water", okay: "I'm Okay", sos: "EMERGENCY SOS 🚨", uploading: "Uploading...", tap: "Tap to take a photo" },
-    hi: { welcome: "नमस्ते पिताजी!", meal: "मैंने खाना खा लिया", med: "दवा लें", water: "पानी पिएं", okay: "मैं ठीक हूँ", sos: "आपातकालीन SOS 🚨", uploading: "अपलोड हो रहा है...", tap: "फोटो लेने के लिए टैप करें" },
-    te: { welcome: "నమస్తే నాన్న!", meal: "నేను భోజనం చేసాను", med: "మందులు వేసుకోండి", water: "నీళ్లు తాగండి", okay: "నేను బాగున్నాను", sos: "అత్యవసర SOS 🚨", uploading: "అప్‌లోడ్ అవుతోంది...", tap: "ఫోటో తీయడానికి నొక్కండి" }
-  };
-
-  const startLogging = (meal: any) => {
-    setCurrentMeal(meal);
-    // VERCEL FIX: Using optional chaining and type casting
-    if (fileInputRef && fileInputRef.current) {
-      fileInputRef.current.click();
-    }
-  };
-
-  const handleFileChange = async (event: any) => {
-    const file = event.target.files?.[0];
-    if (!file || !currentMeal) return;
-
-    setLoading(true);
-    const fileName = `${Date.now()}-${file.name}`;
-
-    const { data: uploadData, error: uploadError } = await supabase.storage
-      .from('care-photos')
-      .upload(fileName, file);
-
-    if (uploadError) {
-      alert("Error: " + uploadError.message);
-      setLoading(false);
-      return;
-    }
-
-    const { data: urlData } = supabase.storage.from('care-photos').getPublicUrl(fileName);
-
-    await supabase.from('meal_logs').insert([
-      { meal_name: currentMeal.title, photo_url: urlData.publicUrl }
-    ]);
-
-    alert("✅ Sent to family!");
-    setLoading(false);
+  const addWater = async () => {
+    setWaterCount(prev => prev + 1);
+    await supabase.from('water_logs').insert([{ glasses: 1 }]);
+    await supabase.from('meal_logs').insert([{ meal_name: "💧 Drank a glass of water", calories: 0 }]);
   };
 
   const triggerSOS = async () => {
     navigator.geolocation.getCurrentPosition(async (pos: any) => {
-      await supabase.from('emergency_alerts').insert([
-        { location_lat: pos.coords.latitude, location_long: pos.coords.longitude }
-      ]);
+      await supabase.from('emergency_alerts').insert([{ location_lat: pos.coords.latitude, location_long: pos.coords.longitude }]);
       alert("🚨 SOS SENT!");
     });
   };
 
-  const actions = [
-    { title: content[lang].meal, key: 'meal', icon: "🍛", color: "bg-green-500" },
-    { title: content[lang].med, key: 'med', icon: "💊", color: "bg-blue-500" },
-    { title: content[lang].water, key: 'water', icon: "💧", color: "bg-cyan-500" },
-    { title: content[lang].okay, key: 'okay', icon: "😊", color: "bg-orange-500" },
-  ];
-
   return (
-    <div className="min-h-screen bg-gray-50 p-6 flex flex-col items-center">
-      <div className="flex space-x-3 mb-6 bg-white p-2 rounded-2xl shadow-sm border border-slate-100 w-full max-w-md">
-        {['en', 'hi', 'te'].map((l) => (
-          <button key={l} onClick={() => setLang(l)} className={`flex-1 py-2 rounded-xl font-bold ${lang === l ? 'bg-blue-600 text-white' : 'text-slate-400'}`}>
-            {l === 'en' ? 'ENG' : l === 'hi' ? 'हिंदी' : 'తెలుగు'}
-          </button>
-        ))}
+    <div className="min-h-screen bg-gray-50 p-6 flex flex-col items-center pb-24">
+      {/* SOS EMERGENCY BUTTON */}
+      <button onClick={triggerSOS} className="w-full max-w-md bg-red-600 text-white p-8 rounded-[2.5rem] shadow-2xl mb-8 animate-pulse font-black text-3xl">EMERGENCY SOS 🚨</button>
+
+      {/* WATER PROGRESS BAR */}
+      <div className="w-full max-w-md bg-white p-6 rounded-[2rem] shadow-sm mb-6 text-center border-b-8 border-blue-400">
+        <h3 className="text-xl font-bold text-slate-800 mb-2">Daily Water Goal</h3>
+        <div className="w-full bg-blue-100 h-6 rounded-full overflow-hidden mb-4">
+          <div className="bg-blue-500 h-full transition-all" style={{ width: `${(waterCount / 8) * 100}%` }}></div>
+        </div>
+        <p className="font-bold text-blue-600 mb-4">{waterCount} / 8 Glasses</p>
+        <button onClick={addWater} className="bg-blue-500 text-white w-full py-4 rounded-2xl font-black text-xl shadow-lg">+ DRINK WATER 💧</button>
       </div>
 
-      <button onClick={triggerSOS} className="w-full max-w-md bg-red-600 text-white p-8 rounded-[2.5rem] shadow-2xl mb-8 animate-pulse font-black text-3xl">
-        {content[lang].sos}
+      {/* STEP COUNTER CARD */}
+      <div className="w-full max-w-md bg-white p-6 rounded-[2rem] shadow-sm mb-6 flex items-center justify-between border-b-8 border-orange-400">
+        <div>
+          <p className="text-slate-400 font-bold uppercase text-xs">Steps Today</p>
+          <h2 className="text-4xl font-black text-slate-800">{steps}</h2>
+        </div>
+        <span className="text-5xl">🚶‍♂️</span>
+      </div>
+
+      {/* VOICE NOTE BUTTON */}
+      <button onClick={() => alert("Voice Recording Started (Simulated)")} className="w-full max-w-md bg-purple-600 text-white p-8 rounded-[2rem] shadow-xl mb-6 font-black text-2xl flex items-center justify-center space-x-3">
+        <span>SEND VOICE NOTE</span>
+        <span>🎙️</span>
       </button>
 
-      <h1 className="text-4xl font-bold mb-10 text-slate-800 text-center">{content[lang].welcome}</h1>
-
-      <input type="file" accept="image/*" capture="environment" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
-
-      <div className="grid grid-cols-1 gap-6 w-full max-w-md">
-        {actions.map((item) => (
-          <button
-            key={item.key}
-            disabled={loading}
-            onClick={() => startLogging({title: item.title})}
-            className={`${item.color} ${loading ? 'opacity-50' : ''} text-white p-8 rounded-3xl shadow-lg flex items-center justify-between transition-all active:scale-95`}
-          >
-            <div className="text-left">
-              <h2 className="text-2xl font-bold">{item.title}</h2>
-              <p className="text-sm font-medium opacity-80">{loading ? content[lang].uploading : content[lang].tap}</p>
-            </div>
-            <span className="text-5xl">{item.icon}</span>
-          </button>
-        ))}
-      </div>
-
-      <div className="mt-12 text-center pb-12">
-        <button onClick={() => window.location.href = '/logout'} className="text-slate-400 font-bold text-sm">Logout 🚪</button>
-      </div>
+      {/* LOGOUT */}
+      <button onClick={() => window.location.href = '/logout'} className="text-slate-400 font-bold text-sm mt-4">Logout 🚪</button>
     </div>
   );
 }
