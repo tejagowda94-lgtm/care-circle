@@ -5,104 +5,121 @@ import { supabase } from '@/lib/supabase';
 
 export default function ParentDashboard() {
   const [loading, setLoading] = useState(false);
-  const [lang, setLang] = useState('en'); 
-  const [waterCount, setWaterCount] = useState(0);
+  const [stats, setStats] = useState({ calIn: 0, calOut: 0, water: 0 });
   const [logs, setLogs] = useState<any[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 1. Fetch Today's Data
   useEffect(() => {
     const fetchData = async () => {
       const today = new Date().toISOString().split('T')[0];
-      const { data: waterData } = await supabase.from('water_logs').select('glasses').eq('created_at', today);
-      if (waterData) setWaterCount(waterData.length);
-
-      const { data: activityData } = await supabase.from('meal_logs').select('*').order('created_at', { ascending: false }).limit(5);
-      if (activityData) setLogs(activityData);
+      const { data: meals } = await supabase.from('meal_logs').select('calories').filter('created_at', 'gte', today);
+      const { data: exercise } = await supabase.from('exercise_logs').select('calories_burned').filter('created_at', 'gte', today);
+      const { data: water } = await supabase.from('water_logs').select('glasses').eq('created_at', today);
+      
+      setStats({
+        calIn: meals?.reduce((acc, curr) => acc + curr.calories, 0) || 0,
+        calOut: exercise?.reduce((acc, curr) => acc + curr.calories_burned, 0) || 0,
+        water: water?.length || 0
+      });
+      
+      const { data: recent } = await supabase.from('meal_logs').select('*').order('created_at', { ascending: false }).limit(5);
+      if (recent) setLogs(recent);
     };
     fetchData();
   }, []);
 
-  // 2. Translations
-  const content: any = {
-    en: { welcome: "Hello, Dad!", water: "Daily Water Goal", addWater: "+ DRINK WATER 💧", steps: "Steps Today", sos: "EMERGENCY SOS 🚨", voice: "SEND VOICE NOTE 🎙️", history: "Your Activity", police: "POLICE", doctor: "DOCTOR" },
-    hi: { welcome: "नमस्ते पिताजी!", water: "पानी का लक्ष्य", addWater: "+ पानी पिएं 💧", steps: "आज के कदम", sos: "आपातकालीन SOS 🚨", voice: "वॉयस नोट भेजें 🎙️", history: "आपकी गतिविधि", police: "पुलिस", doctor: "डॉक्टर" },
-    te: { welcome: "నమస్తే నాన్న!", water: "నీటి లక్ష్యం", addWater: "+ నీళ్లు తాగండి 💧", steps: "నేటి అడుగులు", sos: "అత్యవసర SOS 🚨", voice: "వాయిస్ నోట్ పంపండి 🎙️", history: "మీ కార్యకలాపాలు", police: "పోలీసు", doctor: "డాక్టర్" }
-  };
-
-  const addWater = async () => {
-    setWaterCount(prev => prev + 1);
-    await supabase.from('water_logs').insert([{ glasses: 1 }]);
-    const newLog = { meal_name: "💧 Drank water", created_at: new Date().toISOString() };
-    setLogs([newLog, ...logs]);
-    await supabase.from('meal_logs').insert([newLog]);
-  };
-
   const triggerSOS = async (type: string) => {
     navigator.geolocation.getCurrentPosition(async (pos: any) => {
-      await supabase.from('emergency_alerts').insert([
-        { 
-          location_lat: pos.coords.latitude, 
-          location_long: pos.coords.longitude,
-          alert_type: type 
-        }
-      ]);
-      alert(`🚨 ${type.toUpperCase()} ALERT SENT!`);
+      await supabase.from('emergency_alerts').insert([{ 
+        location_lat: pos.coords.latitude, location_long: pos.coords.longitude, alert_type: type 
+      }]);
+      alert(`🚨 ${type.toUpperCase()} ALERT SENT TO FAMILY!`);
     });
   };
 
+  const handleFileUpload = async (e: any) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setLoading(true);
+    const fileName = `${Date.now()}-${file.name}`;
+    const { data: upload } = await supabase.storage.from('care-photos').upload(fileName, file);
+    const { data: url } = supabase.storage.from('care-photos').getPublicUrl(fileName);
+    
+    // Simulate AI Nutrition Data for now
+    await supabase.from('meal_logs').insert([{ 
+      meal_name: "Logged Meal", calories: 350, protein: 20, carbs: 45, fats: 10, photo_url: url.publicUrl 
+    }]);
+    
+    window.location.reload(); // Refresh to show new data
+  };
+
   return (
-    <div className="min-h-screen bg-gray-50 p-6 flex flex-col items-center pb-24 text-slate-800">
-      
-      {/* LANGUAGE SELECTOR */}
-      <div className="flex space-x-2 mb-6 w-full max-w-md">
-        {['en', 'hi', 'te'].map((l) => (
-          <button key={l} onClick={() => setLang(l)} className={`flex-1 py-2 rounded-xl font-bold ${lang === l ? 'bg-blue-600 text-white' : 'bg-white shadow-sm'}`}>
-            {l.toUpperCase()}
-          </button>
-        ))}
-      </div>
-
-      {/* MAIN EMERGENCY SOS */}
-      <button onClick={() => triggerSOS('general')} className="w-full max-w-md bg-red-600 text-white p-8 rounded-[2.5rem] shadow-2xl mb-4 animate-pulse font-black text-3xl">
-        {content[lang].sos}
-      </button>
-
-      {/* NEW: POLICE & DOCTOR BUTTONS */}
-      <div className="grid grid-cols-2 gap-4 w-full max-w-md mb-8">
-        <button onClick={() => triggerSOS('police')} className="bg-blue-800 text-white p-6 rounded-3xl shadow-xl font-black text-xl flex flex-col items-center">
-          <span>{content[lang].police}</span>
-          <span className="text-3xl">🚔</span>
+    <div className="min-h-screen bg-slate-50 p-4 pb-24 font-sans text-slate-800">
+      {/* 1. EMERGENCY GRID */}
+      <div className="grid grid-cols-3 gap-3 mb-6">
+        <button onClick={() => triggerSOS('police')} className="bg-blue-700 text-white p-4 rounded-2xl shadow-lg flex flex-col items-center justify-center">
+          <span className="text-2xl">🚔</span>
+          <span className="text-[10px] font-black mt-1">POLICE</span>
         </button>
-        <button onClick={() => triggerSOS('doctor')} className="bg-emerald-600 text-white p-6 rounded-3xl shadow-xl font-black text-xl flex flex-col items-center">
-          <span>{content[lang].doctor}</span>
-          <span className="text-3xl">🩺</span>
+        <button onClick={() => triggerSOS('general')} className="bg-red-600 text-white p-4 rounded-2xl shadow-xl flex flex-col items-center justify-center animate-pulse">
+          <span className="text-2xl">🚨</span>
+          <span className="text-[10px] font-black mt-1">SOS</span>
+        </button>
+        <button onClick={() => triggerSOS('doctor')} className="bg-emerald-600 text-white p-4 rounded-2xl shadow-lg flex flex-col items-center justify-center">
+          <span className="text-2xl">🩺</span>
+          <span className="text-[10px] font-black mt-1">DOCTOR</span>
         </button>
       </div>
 
-      {/* WATER PROGRESS */}
-      <div className="w-full max-w-md bg-white p-6 rounded-[2rem] shadow-sm mb-6 border-b-8 border-blue-400">
-        <h3 className="text-xl font-bold mb-2">{content[lang].water}</h3>
-        <div className="w-full bg-blue-100 h-6 rounded-full overflow-hidden mb-4">
-          <div className="bg-blue-500 h-full transition-all" style={{ width: `${(waterCount / 8) * 100}%` }}></div>
+      {/* 2. STATS OVERVIEW */}
+      <div className="bg-white rounded-[2.5rem] p-6 shadow-sm border border-slate-100 mb-6 grid grid-cols-3 gap-2 text-center">
+        <div>
+          <p className="text-2xl font-black text-orange-500">{stats.calIn}</p>
+          <p className="text-[10px] font-bold text-slate-400 uppercase">Calories In</p>
         </div>
-        <p className="font-bold text-blue-600 mb-4 text-center">{waterCount} / 8 Glasses</p>
-        <button onClick={addWater} className="bg-blue-500 text-white w-full py-4 rounded-2xl font-black text-xl shadow-lg">{content[lang].addWater}</button>
+        <div className="border-x border-slate-100">
+          <p className="text-2xl font-black text-blue-500">{stats.water}/8</p>
+          <p className="text-[10px] font-bold text-slate-400 uppercase">Water</p>
+        </div>
+        <div>
+          <p className="text-2xl font-black text-emerald-500">{stats.calOut}</p>
+          <p className="text-[10px] font-bold text-slate-400 uppercase">Burned</p>
+        </div>
       </div>
 
-      {/* HISTORY FEED */}
-      <div className="w-full max-w-md mb-8">
-        <h2 className="text-lg font-black uppercase text-slate-400 mb-4 px-2">{content[lang].history}</h2>
+      {/* 3. CAMERA BUTTON */}
+      <button 
+        onClick={() => fileInputRef.current?.click()}
+        className="w-full bg-indigo-600 text-white p-8 rounded-[2.5rem] shadow-xl mb-6 flex items-center justify-center space-x-4 active:scale-95 transition-all"
+      >
+        <span className="text-4xl">📸</span>
+        <div className="text-left">
+          <p className="text-xl font-black">CLICK FOOD PHOTO</p>
+          <p className="text-xs opacity-80 font-bold uppercase tracking-widest">Auto-track Nutrition</p>
+        </div>
+      </button>
+      <input type="file" accept="image/*" capture="environment" ref={fileInputRef} onChange={handleFileUpload} className="hidden" />
+
+      {/* 4. RECENT ACTIVITY */}
+      <div className="w-full">
+        <h3 className="text-sm font-black text-slate-400 uppercase mb-4 px-2">Today's History</h3>
         <div className="space-y-3">
-          {logs.map((log, index) => (
-            <div key={index} className="bg-white p-4 rounded-2xl shadow-sm flex items-center justify-between border-l-4 border-blue-400">
-              <p className="font-bold text-slate-700">{log.meal_name}</p>
-              <p className="text-[10px] font-bold text-slate-400 uppercase">{new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+          {logs.map((log, i) => (
+            <div key={i} className="bg-white p-4 rounded-3xl shadow-sm flex items-center space-x-4 border-l-4 border-indigo-500">
+              <span className="text-2xl">{log.meal_name.includes('Water') ? '💧' : '🍲'}</span>
+              <div className="flex-1">
+                <p className="font-bold">{log.meal_name}</p>
+                <p className="text-[10px] text-slate-400 font-bold uppercase">{new Date(log.created_at).toLocaleTimeString()}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs font-black text-slate-400">{log.calories} kcal</p>
+              </div>
             </div>
           ))}
         </div>
       </div>
 
-      <button onClick={() => window.location.href = '/logout'} className="text-slate-400 font-bold text-sm">Logout 🚪</button>
+      <button onClick={() => window.location.href='/logout'} className="mt-10 text-slate-300 font-bold text-sm">LOGOUT CARECIRCLE</button>
     </div>
   );
 }
