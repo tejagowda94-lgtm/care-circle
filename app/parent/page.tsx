@@ -10,23 +10,25 @@ export default function UnifiedDashboard() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 1. REAL-TIME DATA SYNC
+  const fetchData = async () => {
+    const today = new Date().toISOString().split('T')[0];
+    const { data: meals } = await supabase.from('meal_logs').select('*').filter('created_at', 'gte', today);
+    const { data: water } = await supabase.from('water_logs').select('*').eq('created_at', today);
+    
+    setStats({
+      calIn: meals?.reduce((acc, curr) => acc + (curr.calories || 0), 0) || 0,
+      calOut: 1250, // Simulated burned calories
+      water: water?.length || 0
+    });
+    if (meals) setLogs(meals.slice(0, 10));
+  };
+
   useEffect(() => {
-    const fetchData = async () => {
-      const today = new Date().toISOString().split('T')[0];
-      const { data: meals } = await supabase.from('meal_logs').select('*').filter('created_at', 'gte', today);
-      const { data: water } = await supabase.from('water_logs').select('*').eq('created_at', today);
-      
-      setStats({
-        calIn: meals?.reduce((acc, curr) => acc + (curr.calories || 0), 0) || 0,
-        calOut: 1250, // Simulated burned calories
-        water: water?.length || 0
-      });
-      if (meals) setLogs(meals.slice(0, 10));
-    };
     fetchData();
 
     // Listen for any new activity instantly
     const channel = supabase.channel('global-sync').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'meal_logs' }, () => fetchData()).subscribe();
+    
     const sosSub = supabase.channel('sos-alerts').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'emergency_alerts' }, (p) => {
       alert(`🚨 EMERGENCY: ${p.new.alert_type.toUpperCase()}!`);
       window.open(`https://www.google.com/maps?q=${p.new.location_lat},${p.new.location_long}`, '_blank');
@@ -62,7 +64,7 @@ export default function UnifiedDashboard() {
   return (
     <div className="min-h-screen bg-slate-50 p-4 pb-24 font-sans text-slate-800">
       <header className="mb-6 text-center">
-        <h1 className="text-2xl font-black tracking-tighter">CARE CIRCLE LIVE 🌍</h1>
+        <h1 className="text-2xl font-black tracking-tighter uppercase">CARE CIRCLE LIVE 🌍</h1>
       </header>
 
       {/* EMERGENCY GRID */}
@@ -111,6 +113,8 @@ export default function UnifiedDashboard() {
           ))}
         </div>
       </div>
+
+      <button onClick={() => window.location.href='/logout'} className="w-full mt-10 text-slate-300 font-bold text-xs uppercase tracking-widest text-center">Logout CareCircle</button>
     </div>
   );
 }
